@@ -39,17 +39,17 @@
 char RadioConfig[128];
 
 // Default values
-const char PROGMEM ENCRYPTKEY[] = "sampleEncryptKey";
-const char PROGMEM MDNS_NAME[] = "rfm69gw1";
-const char PROGMEM MQTT_BROKER[] = "raspi2";
+const char PROGMEM ENCRYPTKEY[]   = "sampleEncryptKey";
+const char PROGMEM MDNS_NAME[]    = "rfm69gw1";
+const char PROGMEM MQTT_BROKER[]  = "raspi2";
 const char PROGMEM RFM69AP_NAME[] = "RFM69-AP";
 #define NETWORKID     200  //the same on all nodes that talk to each other
 #define NODEID        1
 
 //Match frequency to the hardware version of the radio
 //#define FREQUENCY     RF69_433MHZ
-//#define FREQUENCY     RF69_868MHZ
-#define FREQUENCY      RF69_915MHZ
+#define FREQUENCY     RF69_868MHZ
+//#define FREQUENCY      RF69_915MHZ
 #define IS_RFM69HCW    true // set to 'true' if you are using an RFM69HCW module
 #define POWER_LEVEL    31
 
@@ -78,13 +78,14 @@ struct _GLOBAL_CONFIG {
 #define GC_IS_RFM69HCW  ((pGC->powerlevel & 0x80) != 0)
 
 struct _GLOBAL_CONFIG *pGC;
-// ^^^^^^^^^ Global Configuration ^^^^^^^^^^^
 
-// vvvvvvvvv ESP8266 WiFi vvvvvvvvvvv
+//////////////////////////////////////////////////////////////////////////
+// WFM Part
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
+//------------------------------------------------------------------------
 void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println("Entered config mode");
   Serial.println(WiFi.softAPIP());
@@ -92,6 +93,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
+//------------------------------------------------------------------------
 void wifi_setup(void) {
   //WiFiManager
   //Local intialization. Once its business is done, there is no need to keep it around
@@ -116,9 +118,9 @@ void wifi_setup(void) {
   Serial.println("connected");
 }
 
-// ^^^^^^^^^ ESP8266 WiFi ^^^^^^^^^^^
 
-// vvvvvvvvv Global Configuration vvvvvvvvvvv
+//////////////////////////////////////////////////////////////////////////
+// EEPROM Part
 uint32_t gc_checksum() {
   uint8_t *p = (uint8_t *)pGC;
   uint32_t checksum = 0;
@@ -129,6 +131,7 @@ uint32_t gc_checksum() {
   return checksum;
 }
 
+//------------------------------------------------------------------------
 void eeprom_setup() {
   EEPROM.begin(4096);
   pGC = (struct _GLOBAL_CONFIG *)EEPROM.getDataPtr();
@@ -149,12 +152,11 @@ void eeprom_setup() {
     EEPROM.commit();
   }
 }
-// ^^^^^^^^^ Global Configuration ^^^^^^^^^^^
 
-// vvvvvvvvv ESP8266 web sockets vvvvvvvvvvv
+//////////////////////////////////////////////////////////////////////////
+// MDNS Part
 #include <ESP8266mDNS.h>
 
-// URL: http://rfm69gw.local
 MDNSResponder mdns;
 
 void mdns_setup(void) {
@@ -172,176 +174,16 @@ void mdns_setup(void) {
   Serial.println(WiFi.localIP());
 }
 
-static const char PROGMEM INDEX_HTML[] = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-<meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-<title>RFM69 Gateway</title>
-<style>
-"body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
-</style>
-<script>
-var websock;
-function start() {
-  var rfm69nodes = [];
-  websock = new WebSocket('ws://' + window.location.hostname + ':81/');
-  websock.onopen = function(evt) { console.log('websock open'); };
-  websock.onclose = function(evt) { console.log('websock close'); };
-  websock.onerror = function(evt) { console.log(evt); };
-  websock.onmessage = function(evt) {
-    //console.log(evt);
-    // evt.data holds the gateway radio status info in JSON format
-    var gwobj = JSON.parse(evt.data);
-    if (gwobj && gwobj.msgType) {
-      if (gwobj.msgType === "config") {
-        var eConfig = document.getElementById('rfm69Config');
-        eConfig.innerHTML = '<p>Frequency ' + gwobj.freq + ' MHz' +
-          ', Network ID:' + gwobj.netid +
-          ', RFM69HCW:' + gwobj.rfm69hcw +
-          ', Power Level:' + gwobj.power;
-      }
-      else if (gwobj.msgType === "status") {
-        var eStatus = document.getElementById('rfm69Status');
-        rfm69nodes[gwobj.senderId] = gwobj;
-        var aTable = '<table>';
-        aTable = aTable.concat(
-            '<tr>' +
-            '<th>Node</th>' +
-            '<th>RSSI</th>' +
-            '<th>Packets</th>' +
-            '<th>Miss</th>' +
-            '<th>Dup</th>' +
-            '<th>Last</th>' +
-            '</tr>');
-        for (var i = 0; i <= 255; i++) {
-          if (rfm69nodes[i]) {
-            aTable = aTable.concat('<tr>' +
-                '<td>' + rfm69nodes[i].senderId + '</td>' +
-                '<td>' + rfm69nodes[i].rssi + '</td>' +
-                '<td>' + rfm69nodes[i].rxMsgCnt  + '</td>' +
-                '<td>' + rfm69nodes[i].rxMsgMiss + '</td>' +
-                '<td>' + rfm69nodes[i].rxMsgDup  + '</td>' +
-                '<td>' + rfm69nodes[i].message + '</td>' +
-                '</tr>');
-          }
-        }
-        aTable = aTable.concat('</table>');
-        eStatus.innerHTML = aTable;
-      }
-      else {
-      }
-    }
-  };
-}
-</script>
-</head>
-<body onload="javascript:start();">
-<h2>RFM69 Gateway</h2>
-<div id="rfm69Config"></div>
-<div id="rfm69Status">Waiting for node data</div>
-<div id="configureGateway">
-  <p><a href="/configGW"><button type="button">Configure Gateway</button></a>
-</div>
-<div id="FirmwareUpdate">
-  <p><a href="/updater"><button type="button">Update Gateway Firmware</button></a>
-</div>
-</body>
-</html>
-)rawliteral";
-
-static const char PROGMEM CONFIGUREGW_HTML[] = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-  <title>RFM69 Gateway Configuration</title>
-  <style>
-    "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
-  </style>
-</head>
-<body>
-  <h2>RFM69 Gateway Configuration</h2>
-  <a href="/configGWrfm69"><button type="button">RFM69</button></a>
-  <p>
-  <a href="/configGWmqtt"><button type="button">MQTT</button></a>
-  <p>
-  <a href="/"><button type="button">Home</button></a>
-</body>
-</html>
-)rawliteral";
-
-static const char PROGMEM CONFIGUREGWRFM69_HTML[] = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-  <title>RFM69 Gateway Configuration</title>
-  <style>
-    "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
-  </style>
-</head>
-<body>
-  <h3>RFM69 Gateway Configuration</h3>
-  <form method='POST' action='/configGWrfm69' enctype='multipart/form-data'>
-    <label>RFM69 Network ID</label>
-    <input type='number' name='networkid' value="%d" min="1" max="255" size="3"><br>
-    <label>RFM69 Node ID</label>
-    <input type='number' name='nodeid' value="%d" min="1" max="255" size="3"><br>
-    <label>RFM69 Encryption Key</label>
-    <input type='text' name='encryptkey' value="%s" size="16" maxlength="16"><br>
-    <label>RFM69 Power Level</label>
-    <input type='number' name='powerlevel' value="%d" min="0" max="31"size="2"><br>
-    <label>RFM69 Frequency</label>
-    <select name="rfmfrequency">
-    <option value="31" %s>315 MHz</option>
-    <option value="43" %s>433 MHz</option>
-    <option value="86" %s>868 MHz</option>
-    <option value="91" %s>915 MHz</option>
-    </select><br>
-    <label for=hcw>RFM69 HCW</label><br>
-    <input type='radio' name='rfm69hcw' id="hcw" value="1" %s> True<br>
-    <input type='radio' name='rfm69hcw' id="hcw" value="0" %s> False<br>
-    <label>RFM69 AP name</label>
-    <input type='text' name='rfmapname' value="%s" size="32" maxlength="32"><br>
-    <p><input type='submit' value='Save changes'>
-  </form>
-  <p><a href="/configGW"><button type="button">Cancel</button></a><a href="/configGWreset"><button type="button">Factory Reset</button></a>
-</body>
-</html>
-)rawliteral";
-
-static const char PROGMEM CONFIGUREGWMQTT_HTML[] = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-  <title>RFM69 Gateway MQTT Configuration</title>
-  <style>
-    "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
-  </style>
-</head>
-<body>
-  <h3>RFM69 Gateway MQTT Configuration</h3>
-  <form method='POST' action='/configGWmqtt' enctype='multipart/form-data'>
-    <label>MQTT broker</label>
-    <input type='text' name='mqttbroker' value="%s" size="32" maxlength="32"><br>
-    <label>MQTT client name</label>
-    <input type='text' name='mqttclientname' value="%s" size="32" maxlength="32"><br>
-    <label>MDNS name</label>
-    <input type='text' name='mdnsname' value="%s" size="32" maxlength="32"><br>
-    <p><input type='submit' value='Save changes'>
-  </form>
-  <p><a href="/configGW"><button type="button">Cancel</button></a>
-</body>
-</html>
-)rawliteral";
+//////////////////////////////////////////////////////////////////////////
+// Web Server and Web Socket Part
+#include "html_pages.h"
 
 #include <WebSocketsServer.h>     //https://github.com/Links2004/arduinoWebSockets
 #include <Hash.h>
 ESP8266WebServer webServer(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
 
+//------------------------------------------------------------------------
 void webSocketEvent(uint8_t num, int type, uint8_t * payload, size_t length)
 {
   Serial.printf("webSocketEvent(%d, %d, ...)\r\n", num, type);
@@ -376,6 +218,7 @@ void webSocketEvent(uint8_t num, int type, uint8_t * payload, size_t length)
   }
 }
 
+//------------------------------------------------------------------------
 void handleRoot()
 {
   Serial.print("Free heap="); Serial.println(ESP.getFreeHeap());
@@ -383,6 +226,7 @@ void handleRoot()
   webServer.send_P(200, "text/html", INDEX_HTML);
 }
 
+//------------------------------------------------------------------------
 void handleNotFound()
 {
   String message = "File Not Found\n\n";
@@ -399,11 +243,13 @@ void handleNotFound()
   webServer.send(404, "text/plain", message);
 }
 
+//------------------------------------------------------------------------
 void handleconfiguregw()
 {
   webServer.send_P(200, "text/html", CONFIGUREGW_HTML);
 }
 
+//------------------------------------------------------------------------
 // Reset global config back to factory defaults
 void handleconfiguregwreset()
 {
@@ -412,6 +258,8 @@ void handleconfiguregwreset()
   ESP.reset();
   delay(1000);
 }
+
+//------------------------------------------------------------------------
 
 #define SELECTED_FREQ(f)  ((pGC->rfmfrequency==f)?"selected":"")
 
@@ -434,6 +282,7 @@ void handleconfiguregwrfm69()
   free(formFinal);
 }
 
+//------------------------------------------------------------------------
 void handleconfiguregwrfm69Write()
 {
   bool commit_required = false;
@@ -504,6 +353,7 @@ void handleconfiguregwrfm69Write()
   }
 }
 
+//------------------------------------------------------------------------
 void handleconfiguregwmqtt()
 {
   size_t formFinal_len = strlen_P(CONFIGUREGWMQTT_HTML) + sizeof(*pGC);
@@ -516,6 +366,7 @@ void handleconfiguregwmqtt()
   free(formFinal);
 }
 
+//------------------------------------------------------------------------
 void handleconfiguregwmqttWrite()
 {
   bool commit_required = false;
@@ -558,6 +409,7 @@ void handleconfiguregwmqttWrite()
   }
 }
 
+//------------------------------------------------------------------------
 void websock_setup(void) {
   webServer.on("/", handleRoot);
   webServer.on("/configGW", HTTP_GET, handleconfiguregw);
@@ -573,7 +425,8 @@ void websock_setup(void) {
   webSocket.onEvent(webSocketEvent);
 }
 
-// vvvvvvvvv ESP8266 Web OTA Updater vvvvvvvvvvv
+//////////////////////////////////////////////////////////////////////////
+// OTA Part
 #include "ESP8266HTTPUpdateServer.h"
 ESP8266HTTPUpdateServer httpUpdater;
 
@@ -581,13 +434,13 @@ void ota_setup() {
   httpUpdater.setup(&webServer, "/updater", "admin", "rfm69gw");
 }
 
-// ^^^^^^^^^ ESP8266 Web OTA Updater ^^^^^^^^^^^
-
-// ^^^^^^^^^ ESP8266 web sockets ^^^^^^^^^^^
-
+//////////////////////////////////////////////////////////////////////////
+// Forward declaration
 void updateClients(uint8_t senderId, int32_t rssi, const char *message);
 
-// vvvvvvvvv RFM69 vvvvvvvvvvv
+//////////////////////////////////////////////////////////////////////////
+// Radio Part
+
 #include <RFM69.h>                //https://www.github.com/lowpowerlab/rfm69
 #include <SPI.h>
 
@@ -621,6 +474,7 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message);
 
 RFM69 radio;
 
+//------------------------------------------------------------------------
 void radio_setup(void) {
   int freq;
   static const char PROGMEM JSONtemplate[] =
@@ -674,6 +528,7 @@ void radio_setup(void) {
   }
 }
 
+//------------------------------------------------------------------------
 void radio_loop(void) {
   //check if something was received (could be an interrupt from the radio)
   if (radio.receiveDone())
@@ -698,9 +553,9 @@ void radio_loop(void) {
   }
 }
 
-// ^^^^^^^^^ RFM69 ^^^^^^^^^^^
-
-// vvvvvvvvv MQTT vvvvvvvvvvv
+//////////////////////////////////////////////////////////////////////////
+// MQTT Part
+//
 // *** Be sure to modify PubSubClient.h ***
 //
 // Be sure to increase the MQTT maximum packet size by modifying
@@ -714,7 +569,8 @@ void radio_loop(void) {
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
-void callback(char* topic, byte* payload, unsigned int length) {
+//------------------------------------------------------------------------
+void MqttRecvCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
@@ -723,16 +579,20 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
 
+  // Add here the code to do whatever after the message arrived is successful,
+  // e.g. parse it, send radio message to node, etc.
   // TBD send message to RFM node
-//  if (radio.sendWithRetry()) {
-//  }
+  //  if (radio.sendWithRetry()) {
+  //  }
 }
 
+//------------------------------------------------------------------------
 void mqtt_setup() {
   mqttClient.setServer(pGC->mqttbroker, 1883);
-  mqttClient.setCallback(callback);
+  mqttClient.setCallback(MqttRecvCallback);
 }
 
+//------------------------------------------------------------------------
 void reconnect() {
   static const char PROGMEM RFMOUT_TOPIC[] = "rfmOut/%d/#";
   char sub_topic[32];
@@ -759,6 +619,7 @@ void reconnect() {
   }
 }
 
+//------------------------------------------------------------------------
 void mqtt_loop() {
   if (!mqttClient.connected()) {
     reconnect();
@@ -766,7 +627,8 @@ void mqtt_loop() {
   mqttClient.loop();
 }
 
-// ^^^^^^^^^ MQTT ^^^^^^^^^^^
+// END MQTT Part
+//////////////////////////////////////////////////////////////////////////
 
 struct _nodestats {
   unsigned long recvMessageCount;
@@ -790,6 +652,8 @@ struct _nodestats *get_nodestats(uint8_t nodeID)
   }
   return nodestats[nodeID];
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void updateClients(uint8_t senderId, int32_t rssi, const char *message)
 {
@@ -867,6 +731,7 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message)
   }
 }
 
+//////////////////////////////////////////////////////////////////////////
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
@@ -887,6 +752,8 @@ void setup() {
   websock_setup();
   radio_setup();
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void loop() {
   radio_loop();
