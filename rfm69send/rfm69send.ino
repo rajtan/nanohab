@@ -16,11 +16,6 @@ WiFiManager wfm;
 RFM69 radio;
 char RadioConfig[128];
 
-// Default values
-const char PROGMEM ENCRYPTKEY[]   = "sampleEncryptKey";
-const char PROGMEM DEV_AP_NAME[]  = "SENSDEV";
-const char PROGMEM MDNS_NAME[]    = "sensdev";
-
 //*********************************************************************************************
 // *********** IMPORTANT SETTINGS - YOU MUST CHANGE/ONFIGURE TO FIT YOUR HARDWARE *************
 //*********************************************************************************************
@@ -35,7 +30,7 @@ const char PROGMEM MDNS_NAME[]    = "sensdev";
 //#define FREQUENCY     RF69_915MHZ
 
 //*********************************************************************************************
-#define SERIAL_BAUD   115200
+#define SERIAL_BAUD   57600
 
 #if defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__) || defined(__AVR_ATmega88) || defined(__AVR_ATmega8__) || defined(__AVR_ATmega88__)
 #define RFM69_CS      10
@@ -65,6 +60,10 @@ const char PROGMEM MDNS_NAME[]    = "sensdev";
 #define LED           13  // onboard blinky
 #endif
 
+// Default values
+const char PROGMEM ENCRYPTKEY[]   = "sampleEncryptKey";
+const char PROGMEM DEV_AP_NAME[]  = "SENSDEV";
+const char PROGMEM MDNS_NAME[]    = "sensdev";
 
 struct _GLOBAL_CONFIG {
   uint32_t    checksum;
@@ -425,7 +424,8 @@ void radio_setup() {
   }
 }
 
-
+//////////////////////////////////////////////////////////////////////////
+// Normal Setup and Loop
 void normal_setup() {
   //while (!Serial); // wait until serial console is open, remove if not tethered to computer
   Serial.begin(SERIAL_BAUD);
@@ -459,7 +459,7 @@ void normal_setup() {
   Serial.print(" Node "); Serial.println(NODEID); Serial.println();
 }
 
-
+//------------------------------------------------------------------------
 void normal_loop() {
   int loops;
   uint32_t startMillis;
@@ -497,14 +497,16 @@ void normal_loop() {
   radio.receiveDone(); //put radio in RX mode
 }
 
-
 //////////////////////////////////////////////////////////////////////////
 // Main
 void setup() {
+  Serial.begin(SERIAL_BAUD);
   eeprom_setup();
   wfm_setup();
+  mdns_setup();
+  websock_setup();
 }
 
+//------------------------------------------------------------------------
 void loop() {
-
 }
