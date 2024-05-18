@@ -6,9 +6,17 @@
 #include <EEPROM.h>
 
 //////////////////////////////////////////////////////////////////////////
-// WFM Part
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
-WiFiManager wfm;
+// Web Server Part
+#include "html_pages.h"
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+
+ESP8266WebServer webServer(80);
+
+#include <ESP8266mDNS.h>
+
+MDNSResponder mdns;
+
 
 #include <RFM69.h>    //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <SPI.h>
@@ -30,7 +38,7 @@ char RadioConfig[128];
 //#define FREQUENCY     RF69_915MHZ
 
 //*********************************************************************************************
-#define SERIAL_BAUD   57600
+#define SERIAL_BAUD   19200
 
 #if defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__) || defined(__AVR_ATmega88) || defined(__AVR_ATmega8__) || defined(__AVR_ATmega88__)
 #define RFM69_CS      10
@@ -61,9 +69,11 @@ char RadioConfig[128];
 #endif
 
 // Default values
-const char PROGMEM ENCRYPTKEY[]   = "sampleEncryptKey";
+const char PROGMEM ENCRYPTKEY[]   = "sampleKey123";
+const char PROGMEM SENS_NAME[]    = "Descriptive Sens Name 12";
 const char PROGMEM DEV_AP_NAME[]  = "SENSDEV";
-const char PROGMEM MDNS_NAME[]    = "sensdev";
+const char PROGMEM DEV_AP_PASS[]  = "SensPass";
+const char PROGMEM MDNS_NAME[]    = "devconf";
 
 struct _GLOBAL_CONFIG {
   uint32_t    checksum;
@@ -71,8 +81,10 @@ struct _GLOBAL_CONFIG {
   char        encryptkey[16+1];
   uint8_t     networkid;
   uint8_t     nodeid;
-  char        devapname[32];
-  char        mdnsname[32];
+  char        sensname[24+1];
+  char        devapname[12+1];
+  char        devappass[12+1];
+  char        mdnsname[12+1];
 
   uint8_t     powerlevel; // bits 0..4 power leve, bit 7 RFM69HCW 1=true
   uint8_t     rfmfrequency;
@@ -89,6 +101,8 @@ struct _GLOBAL_CONFIG {
 struct _GLOBAL_CONFIG *pGC;
 
 uint32_t packetnum = 0;  // packet counter, we increment per xmission
+
+#define SELECTED_FREQ(f)  ((pGC->rfmfrequency==f)?"selected":"")
 
 //////////////////////////////////////////////////////////////////////////
 // EEPROM Part
@@ -114,7 +128,9 @@ void eeprom_setup() {
     strcpy_P(pGC->encryptkey, ENCRYPTKEY);
     pGC->networkid = NETWORKID;
     pGC->nodeid = NODEID;
+    strcpy_P(pGC->sensname, SENS_NAME);
     strcpy_P(pGC->devapname, DEV_AP_NAME);
+    strcpy_P(pGC->devappass, DEV_AP_PASS);
     strcpy_P(pGC->mdnsname, MDNS_NAME);
 
     pGC->powerlevel = ((IS_RFM69HCW)?0x80:0x00) | POWER_LEVEL;
@@ -125,45 +141,8 @@ void eeprom_setup() {
   }
 }
 
-
-//------------------------------------------------------------------------
-void configModeCallback (WiFiManager *wfm) {
-  Serial.println("Entered config mode");
-  Serial.println(WiFi.softAPIP());
-  //if you used auto generated SSID, print it
-  Serial.println(wfm->getConfigPortalSSID());
-}
-
-//------------------------------------------------------------------------
-void wfm_setup() {
-
-  //WiFiManager
-  //Local intialization. Once its business is done, there is no need to keep it around
-  
-  //reset settings - for testing. Wipes out SSID/password.
-  //wfm.resetSettings();
-
-  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
-  wfm.setAPCallback(configModeCallback);
-
-  //fetches ssid and pass and tries to connect
-  //if it does not connect it starts an access point with the specified name
-  //here  "AutoConnectAP"
-  //and goes into a blocking loop awaiting configuration
-  if(!wfm.autoConnect(pGC->devapname)) {
-    Serial.println("failed to connect and hit timeout");
-    //reset and try again, or maybe put it to deep sleep
-    ESP.reset();
-    delay(1000);
-  }
-  Serial.println("connected");
-}
-
 //////////////////////////////////////////////////////////////////////////
 // MDNS Part
-#include <ESP8266mDNS.h>
-
-MDNSResponder mdns;
 
 void mdns_setup(void) {
   if (pGC->mdnsname[0] == '\0') return;
@@ -171,7 +150,7 @@ void mdns_setup(void) {
   if (mdns.begin(pGC->mdnsname, WiFi.localIP())) {
     Serial.println("MDNS responder started");
     mdns.addService("http", "tcp", 80);
-    mdns.addService("ws", "tcp", 81);
+    //mdns.addService("ws", "tcp", 81);
   }
   else {
     Serial.println("MDNS.begin failed");
@@ -181,51 +160,7 @@ void mdns_setup(void) {
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Web Server and Web Socket Part
-#include "html_pages.h"
-#include <DNSServer.h>
-#include <ESP8266WebServer.h>
-#include <WebSocketsServer.h>     //https://github.com/Links2004/arduinoWebSockets
-#include <Hash.h>
-
-ESP8266WebServer webServer(80);
-WebSocketsServer webSocket = WebSocketsServer(81);
-
-//------------------------------------------------------------------------
-void webSocketEvent(uint8_t num, int type, uint8_t * payload, size_t length)
-{
-  Serial.printf("webSocketEvent(%d, %d, ...)\r\n", num, type);
-  switch(type) {
-    case WStype_DISCONNECTED:
-      Serial.printf("[%u] Disconnected!\r\n", num);
-      break;
-    case WStype_CONNECTED:
-      {
-        IPAddress ip = webSocket.remoteIP(num);
-        Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\r\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-        // Send the RFM69 radio configuration one time after connection
-        webSocket.sendTXT(num, RadioConfig, strlen(RadioConfig));
-      }
-      break;
-    case WStype_TEXT:
-      Serial.printf("[%u] get Text: %s\r\n", num, payload);
-
-      // send data to all connected clients
-      //webSocket.broadcastTXT(payload, length);
-      break;
-    case WStype_BIN:
-      Serial.printf("[%u] get binary length: %u\r\n", num, length);
-      //hexdump(payload, length);
-
-      // echo data back to browser
-      //webSocket.sendBIN(num, payload, length);
-      break;
-    default:
-      Serial.printf("Invalid WStype [%d]\r\n", type);
-      break;
-  }
-}
-
+// Web Server Part
 //------------------------------------------------------------------------
 void handleRoot()
 {
@@ -263,23 +198,24 @@ void handleConfigReset()
 
 //------------------------------------------------------------------------
 
-#define SELECTED_FREQ(f)  ((pGC->rfmfrequency==f)?"selected":"")
-
 void handleConfigDev()
 {
   size_t formFinal_len = strlen_P(CONFIGUREDEV_HTML) + sizeof(*pGC);
+  Serial.println(sizeof(*pGC));
+  Serial.println(strlen_P(CONFIGUREDEV_HTML));
+  Serial.println(formFinal_len);
   char *formFinal = (char *)malloc(formFinal_len);
   if (formFinal == NULL) {
     Serial.println("formFinal malloc failed");
     return;
   }
   snprintf_P(formFinal, formFinal_len, CONFIGUREDEV_HTML,
-      pGC->networkid, pGC->nodeid, pGC->encryptkey, GC_POWER_LEVEL,
+      pGC->encryptkey, pGC->networkid, pGC->nodeid,  pGC->sensname, pGC->devapname, pGC->devappass,
+      (GC_IS_RFM69HCW)?"checked":"", (GC_IS_RFM69HCW)?"":"checked", GC_POWER_LEVEL,
       SELECTED_FREQ(RF69_315MHZ), SELECTED_FREQ(RF69_433MHZ),
-      SELECTED_FREQ(RF69_868MHZ), SELECTED_FREQ(RF69_915MHZ),
-      (GC_IS_RFM69HCW)?"checked":"", (GC_IS_RFM69HCW)?"":"checked",
-      pGC->devapname
+      SELECTED_FREQ(RF69_868MHZ), SELECTED_FREQ(RF69_915MHZ)
       );
+
   webServer.send(200, "text/html", formFinal);
   free(formFinal);
 }
@@ -318,11 +254,32 @@ void handleConfigDevWrite()
         pGC->networkid = formnodeid;
       }
     }
+    else if (argNamei == "sensname") {
+      const char *sensname = argi.c_str();
+      if (strcmp(sensname, pGC->sensname) != 0) {
+        commit_required = true;
+        strcpy(pGC->sensname, sensname);
+      }
+    }
     else if (argNamei == "devapname") {
       const char *apname = argi.c_str();
       if (strcmp(apname, pGC->devapname) != 0) {
         commit_required = true;
         strcpy(pGC->devapname, apname);
+      }
+    }
+    else if (argNamei == "devappass") {
+      const char *appass = argi.c_str();
+      if (strcmp(appass, pGC->devappass) != 0) {
+        commit_required = true;
+        strcpy(pGC->devappass, appass);
+      }
+    }
+    else if (argNamei == "mdnsname") {
+      const char *mdnsname = argi.c_str();
+      if (strcmp(mdnsname, pGC->mdnsname) != 0) {
+        commit_required = true;
+        strcpy(pGC->mdnsname, mdnsname);
       }
     }
     else if (argNamei == "rfm69hcw") {
@@ -357,16 +314,13 @@ void handleConfigDevWrite()
 }
 
 //------------------------------------------------------------------------
-void websock_setup() {
+void webserver_setup() {
   webServer.on("/", handleRoot);
   webServer.on("/configDev", HTTP_GET, handleConfigDev);
   webServer.on("/configDev", HTTP_POST, handleConfigDevWrite);
   webServer.on("/configReset", HTTP_GET, handleConfigReset);
   webServer.onNotFound(handleNotFound);
   webServer.begin();
-
-  webSocket.begin();
-  webSocket.onEvent(webSocketEvent);
 }
 
 
@@ -500,13 +454,29 @@ void normal_loop() {
 //////////////////////////////////////////////////////////////////////////
 // Main
 void setup() {
+  // Shut Down WiFi connection
+  // WiFi.disconnect( true, false ); // disconnect but dont erase credentials (or save time of it)
+  // delay( 1 );
+  // WiFi.mode( WIFI_OFF );
+
+  // //Bring up the WiFi connection
+  // WiFi.forceSleepWake();
+  // delay( 1 );
+
   Serial.begin(SERIAL_BAUD);
   eeprom_setup();
-  wfm_setup();
-  mdns_setup();
-  websock_setup();
+  delay(100);
+
+  WiFi.softAP(pGC->devapname, pGC->devappass);
+  //mdns_setup();
+  Serial.print("Access Point \"");Serial.print(pGC->devapname);
+  Serial.println("\" started");
+  Serial.print("IP address:\t");
+  Serial.println(WiFi.softAPIP());         // Send the IP address of the ESP8266 to the computer
+  webserver_setup();
 }
 
 //------------------------------------------------------------------------
 void loop() {
+  webServer.handleClient();
 }

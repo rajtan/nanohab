@@ -56,28 +56,33 @@ static const char PROGMEM CONFIGUREDEV_HTML[] = R"rawliteral(
   </style>
 </head>
 <body>
-  <h3>Update Device Configuration</h3>
+  <h2>Device Configuration</h2>
   <form method='POST' action='/configDev' enctype='multipart/form-data'>
-    <label>RFM69 Encryption Key</label>
+    <label>Network Key</label><br>
     <input type='text' name='encryptkey' value="%s" size="16" maxlength="16"><br>
 
-    <label>Network ID</label>
-    <input type='number' name='networkid' value="%d" min="1" max="255" size="3"><br>
+    <label>Network ID (2-254)</label><br>
+    <input type='number' name='networkid' value="%d" min="2" max="254" size="3"><br>
 
-    <label>Device Node ID</label>
-    <input type='number' name='nodeid' value="%d" min="1" max="255" size="3"><br>
+    <label>Sens ID (2-254)</label><br>
+    <input type='number' name='nodeid' value="%d" min="2" max="254" size="3"><br>
 
-    <label>Device AP name</label>
-    <input type='text' name='devapname' value="%s" size="32" maxlength="32"><br>
+    <label>Sens Name</label><br>
+    <input type='text' name='sensname' value="%s" size="24" maxlength="24"><br>
+
+    <label>Config AP Name</label><br>
+    <input type='text' name='devapname' value="%s" size="12" maxlength="12"><br>
+    <label>Config Pass</label><br>
+    <input type='password' name='devappass' value="%s" size="12" maxlength="12"><br>
 <!--
     <label for=hcw>RFM69 HCW</label><br>
     <input type='radio' name='rfm69hcw' id="hcw" value="1" %s> True<br>
     <input type='radio' name='rfm69hcw' id="hcw" value="0" %s> False<br>
 
-    <label>RFM69 Power Level</label>
+    <label>RFM69 Power Level</label><br>
     <input type='number' name='powerlevel' value="%d" min="0" max="31"size="2"><br>
 
-    <label>RFM69 Frequency</label>
+    <label>RFM69 Frequency</label><br>
     <select name="rfmfrequency">
     <option value="31" %s>315 MHz</option>
     <option value="43" %s>433 MHz</option>
@@ -85,7 +90,7 @@ static const char PROGMEM CONFIGUREDEV_HTML[] = R"rawliteral(
     <option value="91" %s>915 MHz</option>
     </select><br>
 -->
-    <p><input type='submit' value='Save changes'>
+    <p><input type='submit' value='Update'>
   </form>
   <p><a href="/configDev"><button type="button">Cancel</button></a><a href="/configReset"><button type="button">Factory Reset</button></a>
 </body>
