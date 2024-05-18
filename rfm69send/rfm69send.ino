@@ -1,22 +1,30 @@
 // ref: https://github.com/bbx10/nanohab/blob/master/rfm69send/rfm69send.ino
 // heavily modified by rt@mps.in 
-
+#if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <pgmspace.h>
 #include <EEPROM.h>
+//#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+ESP8266WebServer webServer(80);
+#endif
+
+#if defined(ESP32)
+#include <WiFi.h>
+#include <pgmspace.h>
+#include <EEPROM.h>
+//#include <DNSServer.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+WebServer webServer(80);
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // Web Server Part
 #include "html_pages.h"
-#include <DNSServer.h>
-#include <ESP8266WebServer.h>
-
-ESP8266WebServer webServer(80);
-
-#include <ESP8266mDNS.h>
 
 MDNSResponder mdns;
-
 
 #include <RFM69.h>    //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <SPI.h>
@@ -70,7 +78,7 @@ char RadioConfig[128];
 
 // Default values
 const char PROGMEM ENCRYPTKEY[]   = "sampleKey123";
-const char PROGMEM SENS_NAME[]    = "Descriptive Sens Name 12";
+const char PROGMEM DEV_DESC[]      = "Descriptive Sens Name 12";
 const char PROGMEM DEV_AP_NAME[]  = "SENSDEV";
 const char PROGMEM DEV_AP_PASS[]  = "SensPass";
 const char PROGMEM MDNS_NAME[]    = "devconf";
@@ -81,7 +89,7 @@ struct _GLOBAL_CONFIG {
   char        encryptkey[16+1];
   uint8_t     networkid;
   uint8_t     nodeid;
-  char        sensname[24+1];
+  char        devdesc[24+1];
   char        devapname[12+1];
   char        devappass[12+1];
   char        mdnsname[12+1];
@@ -128,7 +136,7 @@ void eeprom_setup() {
     strcpy_P(pGC->encryptkey, ENCRYPTKEY);
     pGC->networkid = NETWORKID;
     pGC->nodeid = NODEID;
-    strcpy_P(pGC->sensname, SENS_NAME);
+    strcpy_P(pGC->devdesc, DEV_DESC);
     strcpy_P(pGC->devapname, DEV_AP_NAME);
     strcpy_P(pGC->devappass, DEV_AP_PASS);
     strcpy_P(pGC->mdnsname, MDNS_NAME);
@@ -147,7 +155,7 @@ void eeprom_setup() {
 void mdns_setup(void) {
   if (pGC->mdnsname[0] == '\0') return;
 
-  if (mdns.begin(pGC->mdnsname, WiFi.localIP())) {
+  if (mdns.begin(pGC->mdnsname)) {
     Serial.println("MDNS responder started");
     mdns.addService("http", "tcp", 80);
     //mdns.addService("ws", "tcp", 81);
@@ -192,7 +200,7 @@ void handleConfigReset()
 {
   pGC->checksum++;
   EEPROM.commit();
-  ESP.reset();
+  ESP.restart();
   delay(1000);
 }
 
@@ -210,7 +218,7 @@ void handleConfigDev()
     return;
   }
   snprintf_P(formFinal, formFinal_len, CONFIGUREDEV_HTML,
-      pGC->encryptkey, pGC->networkid, pGC->nodeid,  pGC->sensname, pGC->devapname, pGC->devappass,
+      pGC->encryptkey, pGC->networkid, pGC->nodeid,  pGC->devdesc, pGC->devapname, pGC->devappass,
       (GC_IS_RFM69HCW)?"checked":"", (GC_IS_RFM69HCW)?"":"checked", GC_POWER_LEVEL,
       SELECTED_FREQ(RF69_315MHZ), SELECTED_FREQ(RF69_433MHZ),
       SELECTED_FREQ(RF69_868MHZ), SELECTED_FREQ(RF69_915MHZ)
@@ -254,11 +262,11 @@ void handleConfigDevWrite()
         pGC->networkid = formnodeid;
       }
     }
-    else if (argNamei == "sensname") {
-      const char *sensname = argi.c_str();
-      if (strcmp(sensname, pGC->sensname) != 0) {
+    else if (argNamei == "devdesc") {
+      const char *devdesc = argi.c_str();
+      if (strcmp(devdesc, pGC->devdesc) != 0) {
         commit_required = true;
-        strcpy(pGC->sensname, sensname);
+        strcpy(pGC->devdesc, devdesc);
       }
     }
     else if (argNamei == "devapname") {
@@ -308,7 +316,7 @@ void handleConfigDevWrite()
   if (commit_required) {
     pGC->checksum = gc_checksum();
     EEPROM.commit();
-    ESP.reset();
+    ESP.restart();
     delay(1000);
   }
 }

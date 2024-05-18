@@ -52,7 +52,50 @@ static const char PROGMEM CONFIGUREDEV_HTML[] = R"rawliteral(
   <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
   <title>Device Configuration</title>
   <style>
-    "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
+    body { background-color: #b0c0f0; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; } 
+    input[type=text], input[type=number],input[type=password],select {
+    width: 98%%;
+    padding: .5em .2em;
+    margin: .5em 0px 1.5em .2em;
+    font-size: 115%%;
+    } 
+    select {
+      width:99%%;
+    }
+    input[type=radio] {
+    padding: .5em;
+    margin: .5em .5em 1em;
+    }
+    label {
+      font-size:120%%;
+      font-weight: bold;
+    }
+    input[type=button], input[type=submit], input[type=reset] {
+      background-color: #203050;
+      border: none;
+      color: white;
+      padding: .25em .5em;
+      font-weight: bold;
+      font-size: x-large;
+      margin: .4em .1em;
+      cursor: pointer;
+      width: 98%%;
+    }
+    input[type=text]:focus,input[type=number]:focus,input[type=password]:focus,input[type=radio]:focus,select:focus {
+     background-color: lightyellow;
+    }
+    button{
+      background-color: #304050;
+      border: none;
+      color: white;
+      padding: .25em .5em;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: x-large;
+      margin: .4em .1em;
+      cursor: pointer;
+      width: 98%%;
+    }
   </style>
 </head>
 <body>
@@ -64,11 +107,11 @@ static const char PROGMEM CONFIGUREDEV_HTML[] = R"rawliteral(
     <label>Network ID (2-254)</label><br>
     <input type='number' name='networkid' value="%d" min="2" max="254" size="3"><br>
 
-    <label>Sens ID (2-254)</label><br>
+    <label>Dev ID (2-254)</label><br>
     <input type='number' name='nodeid' value="%d" min="2" max="254" size="3"><br>
 
-    <label>Sens Name</label><br>
-    <input type='text' name='sensname' value="%s" size="24" maxlength="24"><br>
+    <label>Dev Desc</label><br>
+    <input type='text' name='devdesc' value="%s" size="24" maxlength="24"><br>
 
     <label>Config AP Name</label><br>
     <input type='text' name='devapname' value="%s" size="12" maxlength="12"><br>
