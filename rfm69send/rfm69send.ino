@@ -20,6 +20,8 @@ ESP8266WebServer webServer(80);
 WebServer webServer(80);
 #endif
 
+#include "enums_structs.h"
+
 //////////////////////////////////////////////////////////////////////////
 // Web Server Part
 #include "html_pages.h"
@@ -35,11 +37,12 @@ char RadioConfig[128];
 //*********************************************************************************************
 // *********** IMPORTANT SETTINGS - YOU MUST CHANGE/ONFIGURE TO FIT YOUR HARDWARE *************
 //*********************************************************************************************
+#define GW_NODEID     1
 #define IS_RFM69HCW   true // set to 'true' if you are using an RFM69HCW module
 #define POWER_LEVEL   31
 #define NETWORKID     200  // The same on all nodes that talk to each other
 #define NODEID        201  // The unique identifier of this node
-#define RECEIVER      1    // The recipient of packets
+#define RECEIVER      GW_NODEID    // The recipient of packets
 //Match frequency to the hardware version of the radio on your Feather
 //#define FREQUENCY     RF69_433MHZ
 #define FREQUENCY     RF69_868MHZ
@@ -63,7 +66,7 @@ char RadioConfig[128];
 #define LED           13  // onboard blinky
 #elif defined(ESP8266)
 // ESP8266
-#define RFM69_CS      15  // GPIO15/HCS/D8
+#define RFM69_CS      15  // GPIO15/D8
 #define RFM69_IRQ     4   // GPIO04/D2
 #define RFM69_IRQN    digitalPinToInterrupt(RFM69_IRQ)
 #define RFM69_RST     2   // GPIO02/D4
@@ -112,6 +115,11 @@ uint32_t packetnum = 0;  // packet counter, we increment per xmission
 
 #define SELECTED_FREQ(f)  ((pGC->rfmfrequency==f)?"selected":"")
 
+struct _SENS_INFO sens_list[] = {
+  {.s_num = 1, .s_type=BINARY_SENSOR, .s_subtype=MOTION_SENSOR, .s_val=0.0, .s_val_type=VT_NULL},
+  {.s_num = 2, .s_type=BINARY_SENSOR, .s_subtype=DOOR_SENSOR, .s_val=1.0, .s_val_type=VT_ONOFF},
+};
+
 //////////////////////////////////////////////////////////////////////////
 // EEPROM Part
 uint32_t gc_checksum() {
@@ -149,188 +157,8 @@ void eeprom_setup() {
   }
 }
 
-//////////////////////////////////////////////////////////////////////////
-// MDNS Part
-
-void mdns_setup(void) {
-  if (pGC->mdnsname[0] == '\0') return;
-
-  if (mdns.begin(pGC->mdnsname)) {
-    Serial.println("MDNS responder started");
-    mdns.addService("http", "tcp", 80);
-    //mdns.addService("ws", "tcp", 81);
-  }
-  else {
-    Serial.println("MDNS.begin failed");
-  }
-  Serial.printf("Connect to http://%s.local or http://", pGC->mdnsname);
-  Serial.println(WiFi.localIP());
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Web Server Part
-//------------------------------------------------------------------------
-void handleRoot()
-{
-  Serial.print("Free heap="); Serial.println(ESP.getFreeHeap());
-
-  webServer.send_P(200, "text/html", INDEX_HTML);
-}
-
-//------------------------------------------------------------------------
-void handleNotFound()
-{
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += webServer.uri();
-  message += "\nMethod: ";
-  message += (webServer.method() == HTTP_GET)?"GET":"POST";
-  message += "\nArguments: ";
-  message += webServer.args();
-  message += "\n";
-  for (uint8_t i=0; i<webServer.args(); i++){
-    message += " " + webServer.argName(i) + ": " + webServer.arg(i) + "\n";
-  }
-  webServer.send(404, "text/plain", message);
-}
-
-//------------------------------------------------------------------------
-// Reset global config back to factory defaults
-void handleConfigReset()
-{
-  pGC->checksum++;
-  EEPROM.commit();
-  ESP.restart();
-  delay(1000);
-}
-
-//------------------------------------------------------------------------
-
-void handleConfigDev()
-{
-  size_t formFinal_len = strlen_P(CONFIGUREDEV_HTML) + sizeof(*pGC);
-  Serial.println(sizeof(*pGC));
-  Serial.println(strlen_P(CONFIGUREDEV_HTML));
-  Serial.println(formFinal_len);
-  char *formFinal = (char *)malloc(formFinal_len);
-  if (formFinal == NULL) {
-    Serial.println("formFinal malloc failed");
-    return;
-  }
-  snprintf_P(formFinal, formFinal_len, CONFIGUREDEV_HTML,
-      pGC->encryptkey, pGC->networkid, pGC->nodeid,  pGC->devdesc, pGC->devapname, pGC->devappass,
-      (GC_IS_RFM69HCW)?"checked":"", (GC_IS_RFM69HCW)?"":"checked", GC_POWER_LEVEL,
-      SELECTED_FREQ(RF69_315MHZ), SELECTED_FREQ(RF69_433MHZ),
-      SELECTED_FREQ(RF69_868MHZ), SELECTED_FREQ(RF69_915MHZ)
-      );
-
-  webServer.send(200, "text/html", formFinal);
-  free(formFinal);
-}
-
-//------------------------------------------------------------------------
-void handleConfigDevWrite()
-{
-  bool commit_required = false;
-  String argi, argNamei;
-
-  for (uint8_t i=0; i<webServer.args(); i++) {
-    Serial.print(webServer.argName(i));
-    Serial.print('=');
-    Serial.println(webServer.arg(i));
-    argi = webServer.arg(i);
-    argNamei = webServer.argName(i);
-
-    if (argNamei == "encryptkey") {
-      const char *enckey = argi.c_str();
-      if (strcmp(enckey, pGC->encryptkey) != 0) {
-        commit_required = true;
-        strcpy(pGC->encryptkey, enckey);
-      }
-    }
-    else if (argNamei == "networkid") {
-      uint8_t formnetworkid = argi.toInt();
-      if (formnetworkid != pGC->networkid) {
-        commit_required = true;
-        pGC->networkid = formnetworkid;
-      }
-    }
-    else if (argNamei == "nodeid") {
-      uint8_t formnodeid = argi.toInt();
-      if (formnodeid != pGC->nodeid) {
-        commit_required = true;
-        pGC->networkid = formnodeid;
-      }
-    }
-    else if (argNamei == "devdesc") {
-      const char *devdesc = argi.c_str();
-      if (strcmp(devdesc, pGC->devdesc) != 0) {
-        commit_required = true;
-        strcpy(pGC->devdesc, devdesc);
-      }
-    }
-    else if (argNamei == "devapname") {
-      const char *apname = argi.c_str();
-      if (strcmp(apname, pGC->devapname) != 0) {
-        commit_required = true;
-        strcpy(pGC->devapname, apname);
-      }
-    }
-    else if (argNamei == "devappass") {
-      const char *appass = argi.c_str();
-      if (strcmp(appass, pGC->devappass) != 0) {
-        commit_required = true;
-        strcpy(pGC->devappass, appass);
-      }
-    }
-    else if (argNamei == "mdnsname") {
-      const char *mdnsname = argi.c_str();
-      if (strcmp(mdnsname, pGC->mdnsname) != 0) {
-        commit_required = true;
-        strcpy(pGC->mdnsname, mdnsname);
-      }
-    }
-    else if (argNamei == "rfm69hcw") {
-      uint8_t hcw = argi.toInt();
-      if (hcw != GC_IS_RFM69HCW) {
-        commit_required = true;
-        pGC->powerlevel = (hcw << 7) | GC_POWER_LEVEL;
-      }
-    }
-    else if (argNamei == "powerlevel") {
-      uint8_t powlev = argi.toInt();
-      if (powlev != GC_POWER_LEVEL) {
-        commit_required = true;
-        pGC->powerlevel = (GC_IS_RFM69HCW << 7) | powlev;
-      }
-    }
-    else if (argNamei == "rfmfrequency") {
-      uint8_t freq = argi.toInt();
-      if (freq != pGC->rfmfrequency) {
-        commit_required = true;
-        pGC->rfmfrequency = freq;
-      }
-    }
-  }
-  handleRoot();
-  if (commit_required) {
-    pGC->checksum = gc_checksum();
-    EEPROM.commit();
-    ESP.restart();
-    delay(1000);
-  }
-}
-
-//------------------------------------------------------------------------
-void webserver_setup() {
-  webServer.on("/", handleRoot);
-  webServer.on("/configDev", HTTP_GET, handleConfigDev);
-  webServer.on("/configDev", HTTP_POST, handleConfigDevWrite);
-  webServer.on("/configReset", HTTP_GET, handleConfigReset);
-  webServer.onNotFound(handleNotFound);
-  webServer.begin();
-}
-
+#include "webconf_server_code.h"
+#include "recv_send_code.h"
 
 //------------------------------------------------------------------------
 void radio_setup() {
@@ -338,8 +166,11 @@ void radio_setup() {
   static const char PROGMEM JSONtemplate[] =
     R"({"msgType":"config","freq":%d,"rfm69hcw":%d,"netid":%d,"power":%d})";
   char payload[128];
+ 
+  //PRE-CHECK RADIO
+  //radio = RFM69(RFM69_CS, RFM69_IRQ, GC_IS_RFM69HCW, RFM69_IRQN);
+  Serial.printf("RFM69_CS=%d, RFM69_IRQ=%d, GC_IS_RFM69HCW=%d, RFM69_IRQN=%d \n", RFM69_CS, RFM69_IRQ, GC_IS_RFM69HCW, RFM69_IRQN);
 
-  radio = RFM69(RFM69_CS, RFM69_IRQ, GC_IS_RFM69HCW, RFM69_IRQN);
   // Hard Reset the RFM module
   pinMode(RFM69_RST, OUTPUT);
   digitalWrite(RFM69_RST, HIGH);
@@ -348,14 +179,20 @@ void radio_setup() {
   delay(100);
 
   // Initialize radio
-  radio.initialize(pGC->rfmfrequency, pGC->nodeid, pGC->networkid);
+  //PRE-CHECK RADIO
+  //radio.initialize(pGC->rfmfrequency, pGC->nodeid, pGC->networkid);
+  Serial.printf("rfmfreq=%d, nodeid=%d, networkid=%d \n");
   if (GC_IS_RFM69HCW) {
-    radio.setHighPower();    // Only for RFM69HCW & HW!
+  //PRE-CHECK RADIO
+    //radio.setHighPower();    // Only for RFM69HCW & HW!
+    Serial.println("HighPower");
   }
-  radio.setPowerLevel(GC_POWER_LEVEL); // power output ranges from 0 (5dBm) to 31 (20dBm)
-
+  //PRE-CHECK RADIO
+  //radio.setPowerLevel(GC_POWER_LEVEL); // power output ranges from 0 (5dBm) to 31 (20dBm)
+  Serial.printf("Poer level = %d\n",GC_POWER_LEVEL);
+  //PRE-CHECK RADIO
   if (pGC->encryptkey[0] != '\0') radio.encrypt(pGC->encryptkey);
-
+  Serial.print(" ENc Key : "); Serial.println(pGC->encryptkey);
   pinMode(LED, OUTPUT);
 
   Serial.print("\nSending at ");
@@ -474,7 +311,7 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   eeprom_setup();
   delay(100);
-
+  
   WiFi.softAP(pGC->devapname, pGC->devappass);
   //mdns_setup();
   Serial.print("Access Point \"");Serial.print(pGC->devapname);
@@ -484,7 +321,8 @@ void setup() {
   webserver_setup();
 }
 
-//------------------------------------------------------------------------
+//////////////////////////////////////////////////////////////////////////
+// loop
 void loop() {
   webServer.handleClient();
 }
