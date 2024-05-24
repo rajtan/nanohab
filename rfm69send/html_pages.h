@@ -106,10 +106,10 @@ static const char PROGMEM CONFIGUREDEV_HTML[] = R"rawliteral(
 
     <label>Network ID (2-254)</label><br>
     <input type='number' name='networkid' value="%d" min="2" max="254" size="3"><br>
-
+<!--
     <label>Dev ID (2-254)</label><br>
     <input type='number' name='nodeid' value="%d" min="2" max="254" size="3"><br>
-
+-->
     <label>Dev Desc</label><br>
     <input type='text' name='devdesc' value="%s" size="24" maxlength="24"><br>
 
@@ -121,10 +121,10 @@ static const char PROGMEM CONFIGUREDEV_HTML[] = R"rawliteral(
     <label for=hcw>RFM69 HCW</label><br>
     <input type='radio' name='rfm69hcw' id="hcw" value="1" %s> True<br>
     <input type='radio' name='rfm69hcw' id="hcw" value="0" %s> False<br>
-
+-->
     <label>RFM69 Power Level</label><br>
     <input type='number' name='powerlevel' value="%d" min="0" max="31"size="2"><br>
-
+<!--
     <label>RFM69 Frequency</label><br>
     <select name="rfmfrequency">
     <option value="31" %s>315 MHz</option>

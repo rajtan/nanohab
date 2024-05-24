@@ -66,8 +66,114 @@ void recvProc(){
 //   }
 }
 
+
+///////////////////////////////////////////////////////////////////////////
+//
+void radio_gw_setup() {
+  int freq;
+  static const char PROGMEM JSONtemplate[] =
+    R"({"msgType":"config","freq":%d,"rfm69hcw":%d,"netid":%d,"mynodeid":%d,"power":%d})";
+  char payload[150];
+ 
+  //PRE-CHECK RADIO
+  //radio = RFM69(RFM69_CS, RFM69_IRQ, GC_IS_RFM69HCW, RFM69_IRQN);
+  Serial.printf("RFM69 Pin Config:\n");
+  Serial.printf("RFM69_CS=%d, RFM69_IRQ=%d, GC_IS_RFM69HCW=%d, RFM69_IRQN=%d \n", RFM69_CS, RFM69_IRQ, GC_IS_RFM69HCW, RFM69_IRQN);
+
+  // Hard Reset the RFM module
+  pinMode(RFM69_RST, OUTPUT);
+  digitalWrite(RFM69_RST, HIGH);
+  delay(100);
+  digitalWrite(RFM69_RST, LOW);
+  delay(100);
+
+  // Initialize radio
+  //PRE-CHECK RADIO
+  //radio.initialize(pGC->rfmfrequency, pGC->nodeid, pGC->networkid);
+  Serial.printf("rfmfreq=%d, nodeid=%d, networkid=%d \n",pGC->rfmfrequency, pGC->nodeid, pGC->networkid );
+  if (GC_IS_RFM69HCW) {
+  //PRE-CHECK RADIO
+    //radio.setHighPower();    // Only for RFM69HCW & HW!
+    Serial.println("HighPower");
+  }
+  //PRE-CHECK RADIO
+  //radio.setPowerLevel(GC_POWER_LEVEL); // power output ranges from 0 (5dBm) to 31 (20dBm)
+  Serial.printf("Power level = %d\n",GC_POWER_LEVEL);
+  //PRE-CHECK RADIO
+  //if (pGC->encryptkey[0] != '\0') radio.encrypt(pGC->encryptkey);
+  Serial.print(" ENc Key : "); Serial.println(pGC->encryptkey);
+  pinMode(LED, OUTPUT);
+
+  Serial.print("\nListening/Sending at ");
+  switch (pGC->rfmfrequency) {
+    case RF69_433MHZ:
+      freq = 433;
+      break;
+    case RF69_868MHZ:
+      freq = 868;
+      break;
+    case RF69_915MHZ:
+      freq = 915;
+      break;
+    case RF69_315MHZ:
+      freq = 315;
+      break;
+    default:
+      freq = -1;
+      break;
+  }
+  Serial.print(freq); Serial.print(' ');
+  Serial.print(pGC->rfmfrequency); Serial.println(" MHz");
+
+  size_t len = snprintf_P(RadioConfig, sizeof(RadioConfig), JSONtemplate,
+      freq, GC_IS_RFM69HCW, pGC->networkid, pGC->nodeid, GC_POWER_LEVEL);
+  if (len >= sizeof(RadioConfig)) {
+    Serial.println("\n\n*** RFM69 config truncated ***\n");
+  }
+}
+
 //////////////////////////////////////////////////////////////////////////
-// Gateway loop
-void loop_gateway(){
+// Radio Gateway loop
+void radio_gw_loop(){
     recvProc();
 }
+
+//////////////////////////////////////////////////////////////////////////
+// flooding sending messaages for testing
+void test_multimsg_send(uint8_t destnode) {
+  int loops;
+  uint32_t startMillis;
+  static uint32_t deltaMillis = 0;
+
+  delay(1000);  // Wait 1 second between transmits, could also 'sleep' here!
+
+  char radioPerf[32];
+  ultoa(packetnum++, radioPerf, 10);
+  strcat(radioPerf, ",");
+  ltoa(radio.readRSSI(false), radioPerf+strlen(radioPerf), 10);
+  strcat(radioPerf, ",");
+  ultoa(deltaMillis, radioPerf+strlen(radioPerf), 10);
+  Serial.print("Sending "); Serial.print(radioPerf); Serial.print(' ');
+
+  loops = 10;
+  startMillis = millis();
+  while (loops--) {
+    if (radio.sendWithRetry(destnode, radioPerf, strlen(radioPerf)+1)) {
+      deltaMillis = millis() - startMillis;
+      Serial.print(" OK ");
+      Serial.println(deltaMillis);
+      break;
+    }
+    else {
+      Serial.print("!");
+    }
+    delay(50);
+  }
+  if (loops <= 0) {
+    Serial.println(" Fail");
+    deltaMillis = 0;
+  }
+
+  radio.receiveDone(); //put radio in RX mode
+}
+
