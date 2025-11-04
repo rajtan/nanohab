@@ -3,16 +3,17 @@
 #include <EEPROM.h>
 
 // Feature toggles - adjust as needed
-// When ENABLE_WIFI_MANAGER == 1, WiFiManager + web parameter editing endpoints are compiled in.
-// Websocket and node-stats are optional.
 #ifndef ENABLE_WEBSOCKET
-#define ENABLE_WEBSOCKET    0  // set to 1 to include websocket server
+#define ENABLE_WEBSOCKET    0
 #endif
 #ifndef ENABLE_WIFI_MANAGER
-#define ENABLE_WIFI_MANAGER 1  // set to 1 to include WiFiManager (captive portal + config endpoints)
+#define ENABLE_WIFI_MANAGER 1
 #endif
 #ifndef ENABLE_NODE_STATS
-#define ENABLE_NODE_STATS   0  // per-node advanced stats
+#define ENABLE_NODE_STATS   0
+#endif
+#ifndef ENABLE_MQTT_CONFIG
+#define ENABLE_MQTT_CONFIG  1
 #endif
 
 // Boot-time configuration button settings (optional)
@@ -34,25 +35,42 @@
 #define DEFAULT_NODEID       1
 #define DEFAULT_POWERLEVEL  31
 #define DEFAULT_MQTT_BROKER "raspi2"
+#define DEFAULT_MQTT_PORT   1883
+#define DEFAULT_MQTT_USER   ""
+#define DEFAULT_MQTT_PASS   ""
 #define DEFAULT_ENCRYPTKEY  "sampleEncryptKey"
 
-// RFM AP name can be compile-time define as you requested
 #ifndef RFMAPNAME
 #define RFMAPNAME "RFM69-AP"
 #endif
 
 struct GlobalConfig {
   uint32_t checksum;
-  char mqttbroker[32];
-  char encryptkey[17]; // 16 + NUL
-  uint8_t networkid;
-  uint8_t nodeid;
-  uint8_t powerlevel;
+  // Network configuration
+  bool     use_dhcp;
+  char     ip[16];
+  char     netmask[16];
+  char     gateway[16];
+  char     dns1[16];
+  char     dns2[16];
+
+  // MQTT configuration
+  char     mqttbroker[32];
+  uint16_t mqtt_port;
+#if ENABLE_MQTT_CONFIG
+  char     mqtt_user[32];
+  char     mqtt_pass[32];
+#endif
+
+  // Radio configuration
+  char     encryptkey[17]; // 16 + NUL
+  uint8_t  networkid;
+  uint8_t  nodeid;
+  uint8_t  powerlevel;
 };
 
 extern GlobalConfig gConfig;
 
-// config API
-bool config_init(); // loads EEPROM into gConfig (returns true if checksum OK)
-bool config_save(); // saves gConfig into EEPROM (updates checksum)
+bool config_init();
+bool config_save();
 uint32_t config_calc_checksum(const GlobalConfig *c);
