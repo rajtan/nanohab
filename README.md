@@ -1,4 +1,5 @@
 # nanohab - RFM69 Gateway (refactor)
+Inspired from : https://github.com/bbx10/nanohab
 
 This repository contains a refactored, modular version of the RFM69 WiFi gateway from the original nanohab project. The changes split responsibilities into modules (config, radio, mqtt, web) and add an optional boot-time configuration button and PlatformIO support.
 
