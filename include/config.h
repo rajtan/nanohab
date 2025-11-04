@@ -15,6 +15,17 @@
 #define ENABLE_NODE_STATS   0  // per-node advanced stats
 #endif
 
+// Boot-time configuration button settings (optional)
+#ifndef CONFIG_GPIO_HOLD_MS
+#define CONFIG_GPIO_HOLD_MS 3000 // milliseconds to hold button at boot to start config portal
+#endif
+#ifndef CONFIG_GPIO_NUM
+#define CONFIG_GPIO_NUM 0        // GPIO pin number for config button (board-specific)
+#endif
+#ifndef CONFIG_GPIO_STATE
+#define CONFIG_GPIO_STATE 0      // Active state: 0 = LOW active (use INPUT_PULLUP), 1 = HIGH active
+#endif
+
 #define SERIAL_BAUD 115200
 #define EEPROM_SIZE 4096
 
